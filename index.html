@@ -600,7 +600,7 @@ function updateWanted(dt){
     let n=0;for(const c of cars)if(c.kind==='cop')n++;
     spawnCD-=dt;if(n<want&&spawnCD<=0){spawnCop();spawnCD=1.4;}
     let hold=false;
-    if(P.dead<=0)for(const c of cars)if(c.kind==='cop'&&dist(c.x,c.y,P.x,P.y)<38&&(!P.car||Math.abs(P.car.v)<50))hold=true;
+    if(P.dead<=0&&!(P.car&&P.car.under>0))for(const c of cars)if(c.kind==='cop'&&dist(c.x,c.y,P.x,P.y)<38&&(!P.car||Math.abs(P.car.v)<50))hold=true;
     bustT=hold?bustT+dt:Math.max(0,bustT-dt*2);
     if(bustT>2){const fine=Math.floor(P.cash*0.2);P.cash-=fine;msg('Fined $'+fine+'  (booked at UBS HQ)','#6aa6ff',3.5);P.dead=2.6;P.busted=true;bustT=0;if(P.car)exitCar(true);}
   }else{
@@ -611,6 +611,7 @@ function updateWanted(dt){
 function updateCars(dt){
   for(const c of cars){
     if(c.dead)continue;
+    if(c.under>0){c.under-=dt;if(c.under<=0){c.v=c.vs||120;c.under=0;}continue;}
     if(c!==P.car&&inSea(c.x,c.y)){splash(c.x,c.y);c.dead=true;continue;}
     if(c===P.car)driveMine(c,dt);
     else if(c.kind==='npc'&&c.flee>0)driveFlee(c,dt);
@@ -798,6 +799,41 @@ function buyItem(id,price){
 }
 function openShop(){shopOpen=true;renderShop();document.getElementById('shop').style.display='flex';keys.Space=false;fireBtn=false;}
 function closeShop(){shopOpen=false;document.getElementById('shop').style.display='none';}
+const TUNNELS=(()=>{
+  const cand=[];
+  for(let ky=1;ky<N;ky++)for(let bx=0;bx<N;bx++){
+    const x=bx*CELL+150,y=ky*CELL;
+    if(dist(x,y,S.x,S.y)<350)continue;
+    const bad=[HQ,DEV,...SHOPS,...PAINTS].some(o=>o.bx===bx&&o.by+1===ky);
+    if(bad)continue;
+    cand.push({x,y,k:hash(bx*3+1,ky*5+2)});
+  }
+  cand.sort((a,b)=>a.k-b.k);
+  const pick=[];
+  for(const c of cand){if(pick.length>=6)break;if(pick.every(o=>dist(o.x,o.y,c.x,c.y)>700))pick.push(c);}
+  const out=[];const used=new Set();
+  for(let i=0;i<pick.length;i++){if(used.has(i))continue;let bj=-1,bd=-1;for(let j=0;j<pick.length;j++){if(j===i||used.has(j))continue;const d=dist(pick[i].x,pick[i].y,pick[j].x,pick[j].y);if(d>bd){bd=d;bj=j;}}
+    if(bj<0)break;used.add(i);used.add(bj);out.push({x:pick[i].x,y:pick[i].y,link:0},{x:pick[bj].x,y:pick[bj].y,link:0});out[out.length-2].link=out.length-1;out[out.length-1].link=out.length-2;}
+  return out;
+})();
+const inMouth=(x,y,m)=>Math.abs(x-m.x)<26&&Math.abs(y-m.y)<46;
+function enterTunnel(c,m){
+  const o=TUNNELS[m.link],east=Math.cos(c.a)>=0;
+  c.vs=Math.max(Math.abs(c.v),140);c.v=0;c.under=1.6;c.tcool=4;
+  c.x=o.x+(east?75:-75);c.y=o.y+(east?17:-17);c.a=east?0:Math.PI;
+  cam.x=c.x;cam.y=c.y;P.x=c.x;P.y=c.y;
+  const need=wanted===1?4:wanted===2?6:9;
+  if(wanted>0){escapeT=Math.max(escapeT,need*0.5);spawnCD=Math.max(spawnCD,8);msg('Through the tunnel... the cops lost you','#c9a3ff',3.5);}
+  else msg('Tunnel','#c9a3ff',1.5);
+}
+function updTunnels(dt){
+  const c=P.car;
+  if(c){c.tcool=(c.tcool||0)-dt;}
+  if(c&&!(c.under>0)&&P.dead<=0&&(c.tcool||0)<=0&&Math.abs(c.v)>30&&Math.abs(Math.cos(c.a))>0.5){
+    for(const m of TUNNELS)if(inMouth(c.x,c.y,m)){enterTunnel(c,m);break;}
+  }
+  for(const k of cars){if(k.dead||k.kind!=='cop')continue;for(const m of TUNNELS)if(inMouth(k.x,k.y,m)){k.dead=true;break;}}
+}
 function paintNear(){return P.car&&P.dead<=0&&Math.abs(P.car.v)<130&&PAINTS.some(o=>dist(o.ex,o.ey,P.car.x,P.car.y)<75);}
 function respray(){
   const c=P.car,cost=wanted>0?200:80;
@@ -1032,7 +1068,7 @@ function update(dt){
   updRadio(dt);
   T+=dt;dayT+=dt;
   updPlayer(dt);updateCars(dt);updPeds(dt);updBill(dt);updRob(dt);updNomad(dt);updGangs(dt);updGrens(dt);updTrain(dt);updBullets(dt);updParts(dt);
-  updateWanted(dt);updMission(dt);ensurePopulation(dt);
+  updTunnels(dt);updateWanted(dt);updMission(dt);ensurePopulation(dt);
   for(const m of msgs)m.t-=dt;
   while(msgs.length&&msgs[0].t<=0)msgs.shift();
   flash=Math.max(0,flash-dt*1.5);shake*=Math.pow(.02,dt);
@@ -1145,7 +1181,11 @@ function draw2D(){
   for(const o of OIL){if(Math.abs(o.x-cam.x)>vw+40||Math.abs(o.y-cam.y)>vh+40)continue;
     OILC=OILC||[oilCanvas(1),oilCanvas(2),oilCanvas(3)];
     ctx.save();ctx.translate(o.x,o.y);ctx.rotate(o.ph);const sz=o.r*2.3;ctx.drawImage(OILC[o.v],-sz/2,-sz/2,sz,sz);ctx.restore();}
-  for(const c of cars){if(Math.abs(c.x-cam.x)>vw+30||Math.abs(c.y-cam.y)>vh+30)continue;drawCar(c);}
+  for(const m of TUNNELS){if(Math.abs(m.x-cam.x)>vw+80||Math.abs(m.y-cam.y)>vh+80)continue;
+    ctx.fillStyle='#07070b';ctx.fillRect(m.x-24,m.y-46,48,92);ctx.strokeStyle='#ffd23c';ctx.lineWidth=3;ctx.strokeRect(m.x-24,m.y-46,48,92);
+    ctx.fillStyle='#ffd23c';for(let k=0;k<4;k++){ctx.fillRect(m.x-24,m.y-40+k*24,8,10);ctx.fillRect(m.x+16,m.y-40+k*24,8,10);}
+    ctx.fillStyle='#c9a3ff';ctx.textAlign='center';ctx.font='700 11px '+F_UI;ctx.save();ctx.translate(m.x,m.y);ctx.rotate(-Math.PI/2);ctx.fillText('TUNNEL',0,4);ctx.restore();}
+  for(const c of cars){if(c.under>0)continue;if(Math.abs(c.x-cam.x)>vw+30||Math.abs(c.y-cam.y)>vh+30)continue;drawCar(c);}
   if(TR.active)drawTrain2D();
   for(const p of peds){if(Math.abs(p.x-cam.x)>vw||Math.abs(p.y-cam.y)>vh)continue;drawPerson(p.x,p.y,p.a,p.col,0,false);}
   if(!P.car&&P.dead<=0){drawPerson(P.x,P.y,P.a,'#ffb703',P.walk,true);ctx.font='700 9px '+F_UI;ctx.textAlign='center';ctx.fillStyle='#fff';ctx.fillText('Bad Murthy',P.x,P.y-13);}
@@ -1270,6 +1310,7 @@ function drawHUD(){
   ctx.fillStyle='#38f9d7';ctx.fillRect(mx+(DEV.cx-P.x)*s-5,my+(DEV.cz-P.y)*s-5,10,10);
   ctx.fillStyle='#3a7bff';ctx.fillRect(mx+(HQ.cx-P.x)*s-5,my+(HQ.cz-P.y)*s-5,10,10);
   ctx.fillStyle='#ffb347';for(const o of SHOPS)ctx.fillRect(mx+(o.cx-P.x)*s-3,my+(o.cz-P.y)*s-3,7,7);
+  ctx.fillStyle='#c9a3ff';for(const m of TUNNELS)ctx.fillRect(mx+(m.x-P.x)*s-3,my+(m.y-P.y)*s-3,6,6);
   ctx.fillStyle='#5dff9a';for(const o of PAINTS)ctx.fillRect(mx+(o.cx-P.x)*s-3,my+(o.cz-P.y)*s-3,7,7);
   ctx.strokeStyle='#8a7f6a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(mx-mr,my+(RAILY-P.y)*s);ctx.lineTo(mx+mr,my+(RAILY-P.y)*s);ctx.stroke();
   if(TR.active){ctx.fillStyle='#ff8c00';for(const r of trainRects()){ctx.fillRect(mx+(r.cx-P.x)*s-r.hl*s,my+(RAILY-P.y)*s-2,r.hl*2*s,4);}}
@@ -1333,6 +1374,7 @@ function drawHUD(){
   // busted bar
   if(bustT>0){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(W/2-60,H*0.22,120,10);ctx.fillStyle='#4a86ff';ctx.fillRect(W/2-60,H*0.22,120*clamp(bustT/2,0,1),10);ctx.font='700 11px '+F_UI;ctx.fillStyle='#fff';ctx.fillText('BEING ARRESTED',W/2,H*0.22-5);}
   // hurt flash / ko
+  if(P.car&&P.car.under>0){ctx.fillStyle='rgba(0,0,0,'+(clamp(P.car.under/1.6,0,1)*0.96)+')';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle='rgba(201,163,255,'+clamp(P.car.under/1.6,0,1)+')';ctx.font='400 54px '+F_DISP;ctx.fillText('TUNNEL',W/2,H/2);}
   if(flash>0){ctx.fillStyle='rgba(200,0,30,'+(flash*0.35)+')';ctx.fillRect(0,0,W,H);}
   if(P.dead>0){const bz=P.busted;ctx.fillStyle=bz?'rgba(0,10,40,.55)':'rgba(30,0,0,.55)';ctx.fillRect(0,0,W,H);ctx.font='400 80px '+F_DISP;ctx.fillStyle=bz?'#4a86ff':'#ff4d4d';ctx.fillText(bz?'BUSTED':'WASTED',W/2,H/2);}
   // button labels
@@ -1518,6 +1560,15 @@ function buildShop3D(cx,cz,h){
   const awn=new THREE.Mesh(bg(60,3,10),cm('#b02a3a'));awn.position.set(cx,23,cz+99);scene.add(awn);
   const strip=new THREE.Mesh(bg(60,2,2),new THREE.MeshBasicMaterial({color:0xffb347}));strip.position.set(cx,25,cz+95);scene.add(strip);
 }
+function buildTunnel3D(m){
+  const pad=ctex(64,128,(g,w,hh)=>{g.fillStyle='#07070b';g.fillRect(0,0,w,hh);g.fillStyle='#ffd23c';for(let k=0;k<6;k++){g.fillRect(0,6+k*20,8,10);g.fillRect(w-8,6+k*20,8,10);}});
+  const padM=new THREE.Mesh(new THREE.PlaneGeometry(48,92),new THREE.MeshBasicMaterial({map:pad}));padM.rotation.x=-Math.PI/2;padM.rotation.z=Math.PI/2;padM.position.set(m.x,1.1,m.y);scene.add(padM);
+  [-1,1].forEach(sd=>{const pl=new THREE.Mesh(bg(10,30,8),cm('#6b6b78'));pl.position.set(m.x,15,m.y+sd*52);scene.add(pl);});
+  const lin=new THREE.Mesh(bg(10,6,112),cm('#3a3a48'));lin.position.set(m.x,33,m.y);scene.add(lin);
+  const tex=ctex(256,64,(g,w,hh)=>{g.fillStyle='#1a1030';g.fillRect(0,0,w,hh);g.strokeStyle='#c9a3ff';g.lineWidth=5;g.strokeRect(4,4,w-8,hh-8);g.fillStyle='#c9a3ff';g.textAlign='center';g.textBaseline='middle';g.font='400 42px '+F_DISP;g.fillText('TUNNEL',w/2,hh/2+2);});
+  const sign=new THREE.Mesh(new THREE.PlaneGeometry(44,12),new THREE.MeshBasicMaterial({map:tex}));sign.position.set(m.x,38,m.y+54);scene.add(sign);
+  const lamp=new THREE.Mesh(new THREE.SphereGeometry(3,8,6),new THREE.MeshBasicMaterial({color:0xc9a3ff}));lamp.position.set(m.x,37,m.y-50);scene.add(lamp);
+}
 function buildPaint3D(cx,cz,h){
   const tex=ctex(512,128,(g,w,hh)=>{g.fillStyle='#062a1c';g.fillRect(0,0,w,hh);g.strokeStyle='#5dff9a';g.lineWidth=8;g.strokeRect(6,6,w-12,hh-12);g.fillStyle='#5dff9a';g.textAlign='center';g.textBaseline='middle';g.font='400 70px '+F_DISP;g.fillText("PAY 'N' SPRAY",w/2,54);g.font='700 26px '+F_UI;g.fillText('NEW COLOUR  \u00b7  NEW YOU',w/2,104);});
   const mat=new THREE.MeshBasicMaterial({map:tex});
@@ -1677,7 +1728,7 @@ function init3D(){
     markerA=labelSprite('A','#ffd23c',54,50,12.5);markerA.position.y=140;markerB=labelSprite('B','#ffd23c',54,50,12.5);markerB.position.y=140;
     markerG.add(markerA);markerG.add(markerB);markerG.visible=false;scene.add(markerG);
     nearRing=new THREE.Mesh(new THREE.RingGeometry(1,1.14,40),new THREE.MeshBasicMaterial({color:0x4aa8ff,side:THREE.DoubleSide,transparent:true,opacity:0.9,depthTest:false}));nearRing.rotation.x=-Math.PI/2;nearRing.position.y=2;nearRing.renderOrder=9;nearRing.visible=false;scene.add(nearRing);
-    hqRing=new THREE.Mesh(new THREE.RingGeometry(20,26,32),new THREE.MeshBasicMaterial({color:0x2a6bff,side:THREE.DoubleSide}));hqRing.rotation.x=-Math.PI/2;hqRing.position.set(HQ.ex,1.6,HQ.ey);hqRing.visible=false;scene.add(hqRing);
+    hqRing=new THREE.Mesh(new THREE.RingGeometry(20,26,32),new THREE.MeshBasicMaterial({color:0x2a6bff,side:THREE.DoubleSide}));hqRing.rotation.x=-Math.PI/2;hqRing.position.set(HQ.ex,1.6,HQ.ey);hqRing.visible=false;scene.add(hqRing);TUNNELS.forEach(buildTunnel3D);
     // bullets
     const bGeo=bg(10,1.4,1.4);
     for(let i=0;i<60;i++){const m=new THREE.Mesh(bGeo,new THREE.MeshBasicMaterial({color:0xfff6a8}));m.visible=false;scene.add(m);bulletPool.push(m);}
@@ -1718,6 +1769,7 @@ function render3D(){
   if(seaTex){seaTex.offset.x=T*0.0009;seaTex.offset.y=Math.sin(T*.3)*0.01;}
   const fl=Math.floor(T*8)%2;
   for(const c of cars){
+    if(c.under>0)continue;
     let g=carMeshes.get(c);if(!g){g=mkCar3(c);scene.add(g);carMeshes.set(c,g);}
     g.userData.f=frameId;g.position.set(c.x,0,c.y);g.rotation.y=-c.a;
     const bars=g.userData.bars;
@@ -1852,7 +1904,7 @@ function frame(ts){
 }
 document.getElementById('go').addEventListener('click',()=>{started=true;initAudio();document.getElementById('intro').style.display='none';});
 requestAnimationFrame(frame);
-window.__game={bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
+window.__game={TUNNELS,enterTunnel,bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
 })();
 </script>
 </body>
