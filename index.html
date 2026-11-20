@@ -132,6 +132,10 @@ const SHOPS=(()=>{const out=[];const mk=(bx,by)=>({bx,by,cx:bx*CELL+150,cz:by*CE
   for(let by=0;by<N;by++)for(let bx=0;bx<N;bx++){if(bkind(bx,by)!==1||(bx===HQ.bx&&by===HQ.by)||(bx===DEV.bx&&by===DEV.by)||out.some(o=>o.bx===bx&&o.by===by))continue;if(hash(bx*5+2,by*11+4)<0.035)out.push(mk(bx,by));}
   return out;})();
 const shopAt=(bx,by)=>SHOPS.some(o=>o.bx===bx&&o.by===by);
+const PAINTS=(()=>{const out=[];for(let by=0;by<N;by++)for(let bx=0;bx<N;bx++){if(bkind(bx,by)!==1||(bx===HQ.bx&&by===HQ.by)||(bx===DEV.bx&&by===DEV.by)||shopAt(bx,by))continue;if(hash(bx*13+5,by*7+9)<0.015)out.push({bx,by,cx:bx*CELL+150,cz:by*CELL+150,ex:bx*CELL+150,ey:by*CELL+250});}
+  if(out.length<3){for(let by=0;by<N&&out.length<3;by++)for(let bx=0;bx<N&&out.length<3;bx++){if(bkind(bx,by)!==1||(bx===HQ.bx&&by===HQ.by)||(bx===DEV.bx&&by===DEV.by)||shopAt(bx,by)||out.some(o=>o.bx===bx&&o.by===by))continue;if((bx*7+by*3)%11===4)out.push({bx,by,cx:bx*CELL+150,cz:by*CELL+150,ex:bx*CELL+150,ey:by*CELL+250});}}
+  return out;})();
+const paintAt=(bx,by)=>PAINTS.some(o=>o.bx===bx&&o.by===by);
 let cars=[],peds=[],bullets=[],parts=[],picks=[],msgs=[];
 let mission=null,nextMissionT=5;
 const cam={x:P.x,y:P.y,z:1};
@@ -357,7 +361,7 @@ function enterCar(c){
 }
 function actPress(){
   if(!started||P.dead>0||shopOpen)return;
-  if(P.car){exitCar(false);return;}
+  if(P.car){if(paintNear()){respray();return;}exitCar(false);return;}
   let best=null,bd=52;
   for(const c of cars){if(c.dead)continue;const d=dist(c.x,c.y,P.x,P.y);if(d<bd){bd=d;best=c;}}
   if(best)enterCar(best);else if(!tryShop()&&!tryBuy()&&!tryHandIn())tryDeal();
@@ -754,6 +758,16 @@ function buyItem(id,price){
 }
 function openShop(){shopOpen=true;renderShop();document.getElementById('shop').style.display='flex';keys.Space=false;fireBtn=false;}
 function closeShop(){shopOpen=false;document.getElementById('shop').style.display='none';}
+function paintNear(){return P.car&&P.dead<=0&&Math.abs(P.car.v)<130&&PAINTS.some(o=>dist(o.ex,o.ey,P.car.x,P.car.y)<75);}
+function respray(){
+  const c=P.car,cost=wanted>0?200:80;
+  if(P.cash<cost){msg('Pay \'n\' Spray: need $'+cost,'#ff6b6b',2.5);return;}
+  P.cash-=cost;c.color='hsl('+rint(0,359)+',70%,50%)';c.cop=false;c.hp=c.t.hp;c.hits=0;c.fire=0;c.exp=0;
+  try{const g=carMeshes.get(c);if(g){scene.remove(g);carMeshes.delete(c);}}catch(e){}
+  if(wanted>0){clearWanted();msg('Respray done  -$'+cost+'  Stars cleared, nobody recognises the car','#7CFC8A',4);}
+  else msg('Respray and repairs  -$'+cost,'#7CFC8A',3);
+  for(let i=0;i<20;i++)parts.push({x:c.x+rnd(-20,20),y:c.y+rnd(-14,14),vx:rnd(-30,30),vy:rnd(-30,30),life:.7,max:.7,col:c.color,s:3});
+}
 function tryShop(){if(!shopNear())return false;openShop();return true;}
 function cycleWeapon(){const ids=Object.keys(WEAPONS).filter(k=>P.owned[k]);P.weapon=ids[(ids.indexOf(P.weapon)+1)%ids.length];msg(WEAPONS[P.weapon].n,'#ffb347',1.5);}
 document.getElementById('shopClose').addEventListener('click',closeShop);
@@ -1070,6 +1084,7 @@ function draw2D(){
     }
   }
   if(wanted>0){ctx.strokeStyle=Math.floor(T*3)%2?'#2a6bff':'#6aa6ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(HQ.ex,HQ.ey,26,0,PI2);ctx.stroke();}
+  for(const o of PAINTS){if(dist(o.ex,o.ey,P.x,P.y)>700)continue;ctx.strokeStyle='rgba(93,255,154,'+(0.55+0.3*Math.sin(T*4))+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(o.ex,o.ey,22,0,PI2);ctx.stroke();}
   for(const o of SHOPS){if(dist(o.ex,o.ey,P.x,P.y)>700)continue;ctx.strokeStyle='rgba(255,179,71,'+(0.55+0.3*Math.sin(T*4))+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(o.ex,o.ey,18,0,PI2);ctx.stroke();}
   // mission marker
   if(mission){
@@ -1137,6 +1152,11 @@ function draw2D(){
       const rx=x0+sx+sz/2,ry=y0+sy+sz/2;
       ctx.fillStyle='#3a0e14';ctx.fillRect(rx-72,ry-26,144,52);ctx.strokeStyle='#ffb347';ctx.lineWidth=3;ctx.strokeRect(rx-72,ry-26,144,52);
       ctx.fillStyle='#ffb347';ctx.textAlign='center';ctx.font='400 30px '+F_DISP;ctx.fillText('GLATT GUNS',rx,ry+4);ctx.font='700 11px '+F_UI;ctx.fillText('WEAPONS \u00b7 ARMOUR',rx,ry+19);
+    }
+    if(paintAt(bx,by)){
+      const rx=x0+sx+sz/2,ry=y0+sy+sz/2;
+      ctx.fillStyle='#062a1c';ctx.fillRect(rx-72,ry-26,144,52);ctx.strokeStyle='#5dff9a';ctx.lineWidth=3;ctx.strokeRect(rx-72,ry-26,144,52);
+      ctx.fillStyle='#5dff9a';ctx.textAlign='center';ctx.font='400 26px '+F_DISP;ctx.fillText("PAY 'N' SPRAY",rx,ry+2);ctx.font='700 11px '+F_UI;ctx.fillText('NEW COLOUR \u00b7 NEW YOU',rx,ry+18);
     }
     if(bx===DEV.bx&&by===DEV.by){
       const rx=x0+sx+sz/2,ry=y0+sy+sz/2;
@@ -1209,6 +1229,7 @@ function drawHUD(){
   ctx.fillStyle='#38f9d7';ctx.fillRect(mx+(DEV.cx-P.x)*s-5,my+(DEV.cz-P.y)*s-5,10,10);
   ctx.fillStyle='#3a7bff';ctx.fillRect(mx+(HQ.cx-P.x)*s-5,my+(HQ.cz-P.y)*s-5,10,10);
   ctx.fillStyle='#ffb347';for(const o of SHOPS)ctx.fillRect(mx+(o.cx-P.x)*s-3,my+(o.cz-P.y)*s-3,7,7);
+  ctx.fillStyle='#5dff9a';for(const o of PAINTS)ctx.fillRect(mx+(o.cx-P.x)*s-3,my+(o.cz-P.y)*s-3,7,7);
   ctx.strokeStyle='#8a7f6a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(mx-mr,my+(RAILY-P.y)*s);ctx.lineTo(mx+mr,my+(RAILY-P.y)*s);ctx.stroke();
   if(TR.active){ctx.fillStyle='#ff8c00';for(const r of trainRects()){ctx.fillRect(mx+(r.cx-P.x)*s-r.hl*s,my+(RAILY-P.y)*s-2,r.hl*2*s,4);}}
   for(const c of cars){if(c.kind!=='cop')continue;ctx.fillStyle=Math.floor(T*6)%2?'#ff3a3a':'#3a7bff';ctx.beginPath();ctx.arc(mx+(c.x-P.x)*s,my+(c.y-P.y)*s,3,0,PI2);ctx.fill();}
@@ -1277,6 +1298,7 @@ function drawHUD(){
   bAct.textContent=P.car?'EXIT':(nearCar()?'ENTER':(robNear()?'BUY':(hqNear()?'PAY $250':(nomadNear()?'DEAL':'ENTER'))));
   bAct.style.opacity=(P.car||nearCar()||robNear()||hqNear()||nomadNear())?1:.55;
   bFire.textContent=P.car?'BRAKE':'FIRE';
+  if(paintNear()){bAct.textContent='SPRAY';bAct.style.opacity=1;}
   bAct.textContent=(!P.car&&shopNear())?'SHOP':bAct.textContent;if(!P.car&&shopNear())bAct.style.opacity=1;
   bWpn.textContent=WEAPONS[P.weapon].n;bWpn.style.display=P.car?'none':'flex';bRad.textContent=radioSt?'\u266A '+(radioSt):'RADIO';bRad.style.display=P.car?'flex':'none';
 }
@@ -1352,6 +1374,7 @@ function buildWorld3D(){
       const m=new THREE.Mesh(bg(188,h,188),mats(lv,hi));m.position.set(cx,h/2,cz);m.matrixAutoUpdate=false;m.updateMatrix();scene.add(m);
       if(isHQ)buildHQ3D(cx,cz,h);
       if(shopAt(bx,by))buildShop3D(cx,cz,h);
+      if(paintAt(bx,by))buildPaint3D(cx,cz,h);
       if(isDEV)buildDev3D(cx,cz,h);
       for(let i=0;i<2;i++){
         const a=new THREE.Mesh(roofBox,roofMat);a.position.set(cx+(hash(bx+i,by*9)-.5)*120,h+4,cz+(hash(bx*9,by+i)-.5)*120);a.matrixAutoUpdate=false;a.updateMatrix();scene.add(a);
@@ -1453,6 +1476,14 @@ function buildShop3D(cx,cz,h){
   const door=new THREE.Mesh(bg(44,20,1.5),cm('#2a0a0e'));door.position.set(cx,10,cz+94.8);scene.add(door);
   const awn=new THREE.Mesh(bg(60,3,10),cm('#b02a3a'));awn.position.set(cx,23,cz+99);scene.add(awn);
   const strip=new THREE.Mesh(bg(60,2,2),new THREE.MeshBasicMaterial({color:0xffb347}));strip.position.set(cx,25,cz+95);scene.add(strip);
+}
+function buildPaint3D(cx,cz,h){
+  const tex=ctex(512,128,(g,w,hh)=>{g.fillStyle='#062a1c';g.fillRect(0,0,w,hh);g.strokeStyle='#5dff9a';g.lineWidth=8;g.strokeRect(6,6,w-12,hh-12);g.fillStyle='#5dff9a';g.textAlign='center';g.textBaseline='middle';g.font='400 70px '+F_DISP;g.fillText("PAY 'N' SPRAY",w/2,54);g.font='700 26px '+F_UI;g.fillText('NEW COLOUR  \u00b7  NEW YOU',w/2,104);});
+  const mat=new THREE.MeshBasicMaterial({map:tex});
+  const sign=new THREE.Mesh(new THREE.PlaneGeometry(128,32),mat);sign.position.set(cx,h-14,cz+94.4);scene.add(sign);
+  const roofSign=new THREE.Mesh(new THREE.PlaneGeometry(150,38),mat);roofSign.rotation.x=-Math.PI/2;roofSign.position.set(cx,h+0.4,cz);scene.add(roofSign);
+  const door=new THREE.Mesh(bg(70,18,1.5),cm('#10161a'));door.position.set(cx,9,cz+94.8);scene.add(door);
+  [0xff3b3b,0xffd23c,0x3b8bff,0x5dff9a].forEach((col,i)=>{const st=new THREE.Mesh(bg(14,2,2),new THREE.MeshBasicMaterial({color:col}));st.position.set(cx-21+i*14,21,cz+95);scene.add(st);});
 }
 function buildHQ3D(cx,cz,h){
   const tex=ctex(512,160,(g,w,hh)=>{g.fillStyle='#12203a';g.fillRect(0,0,w,hh);g.strokeStyle='#fff';g.lineWidth=8;g.strokeRect(6,6,w-12,hh-12);g.fillStyle='#fff';g.textAlign='center';g.textBaseline='middle';g.font='400 104px '+F_DISP;g.fillText('UBS',w/2,66);g.font='700 34px '+F_UI;g.fillText('POLICE HEADQUARTERS',w/2,126);});
@@ -1765,7 +1796,7 @@ function frame(ts){
 }
 document.getElementById('go').addEventListener('click',()=>{started=true;initAudio();document.getElementById('intro').style.display='none';});
 requestAnimationFrame(frame);
-window.__game={closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
+window.__game={PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
 })();
 </script>
 </body>
