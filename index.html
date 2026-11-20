@@ -1155,7 +1155,7 @@ const cm=col=>mc[col]||(mc[col]=new THREE.MeshLambertMaterial({color:new THREE.C
 function ctex(w,h,fn){const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'),w,h);return new THREE.CanvasTexture(c);}
 function labelSprite(txt,col,fs,w,h,mx){mx=mx||228;
   const t=ctex(256,64,(g,w2,h2)=>{g.font='700 '+fs+'px '+F_UI;const mw=g.measureText(txt).width;if(mw>mx){g.font='700 '+Math.floor(fs*mx/mw)+'px '+F_UI;}g.textAlign='center';g.textBaseline='middle';g.lineWidth=6;g.strokeStyle='rgba(0,0,0,.8)';g.strokeText(txt,w2/2,h2/2);g.fillStyle=col;g.fillText(txt,w2/2,h2/2);});
-  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:false,transparent:true,opacity:0.78}));sp.scale.set(w*1.3,h*1.3,1);sp.renderOrder=10;return sp;
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:false,transparent:true,opacity:0.55}));sp.scale.set(w*1.3,h*1.3,1);sp.renderOrder=10;return sp;
 }
 function buildWorld3D(){
   const maxA=Math.min(4,renderer.capabilities.getMaxAnisotropy?renderer.capabilities.getMaxAnisotropy():1);
