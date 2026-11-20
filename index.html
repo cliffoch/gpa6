@@ -336,13 +336,21 @@ function carCollide(){
     }
   }
 }
-function igniteCar(c){if(c.fire>0||c.dead)return;c.fire=3.6;c.exp=0;if(c===P.car)msg('Your car is on fire! GET OUT!','#ff9f43',3);}
+function bailDriver(c){
+  if(c.bus||c===P.car||c.kind==='park'||c.dead)return;
+  const a=c.a+(Math.random()<.5?1:-1)*Math.PI/2;let x=c.x+Math.cos(a)*(c.h/2+10),y=c.y+Math.sin(a)*(c.h/2+10);
+  if(solidBox(x,y,5)){x=c.x;y=c.y;}
+  const gun=c.blame==='p'&&Math.random()<((c.kind==='cop'||c.cop)?0.85:0.4);
+  peds.push({x,y,a:Math.atan2(y-P.y,x-P.x),spd:rnd(40,60),col:PEDCOL[rint(0,7)],t:2,flee:gun?1.4:7,dead:false,driver:true,gun,gt:0,shotT:0});
+  c.kind='park';
+}
+function igniteCar(c){if(c.fire>0||c.dead)return;c.fire=3.6;c.exp=0;bailDriver(c);if(c===P.car)msg('Your car is on fire! GET OUT!','#ff9f43',3);}
 function updFire(c,dt){
   if(!(c.fire>0))return;
   c.fire-=dt;
   if(Math.random()<dt*26)parts.push({x:c.x+rnd(-8,8),y:c.y+rnd(-8,8),vx:rnd(-14,14),vy:rnd(-30,-6),life:rnd(.9,1.6),max:1.6,col:'rgba(40,40,40,.55)',s:rnd(5,9)});
   if(Math.random()<dt*22)parts.push({x:c.x+rnd(-10,10),y:c.y+rnd(-8,8),vx:rnd(-40,40),vy:rnd(-50,-10),life:rnd(.4,.8),max:.8,col:'#ffd24a',s:1.8});
-  for(const o of cars){if(o===c||o.dead||o.fire>0)continue;if(dist(o.x,o.y,c.x,c.y)<95){o.exp=(o.exp||0)+dt;if(o.exp>0.9)igniteCar(o);}}
+  for(const o of cars){if(o===c||o.dead||o.fire>0)continue;if(dist(o.x,o.y,c.x,c.y)<95){o.exp=(o.exp||0)+dt;if(o.exp>0.9){o.blame=o.blame||c.blame;igniteCar(o);}}}
   if(c.fire<=0){c.fire=0;c.hp=0;explode(c);}
 }
 const EXPL=[];
@@ -527,7 +535,7 @@ function updBullets(dt){
         if(!dead)for(const c of cars){
           if(c.dead||c===P.car)continue;
           if(Math.abs(c.x-b.x)<22&&Math.abs(c.y-b.y)<22){
-            c.hp-=16;c.hitByP=true;dead=true;c.hits=(c.hits|0)+1;if(c.hits>=6&&!(c.fire>0))igniteCar(c);if(c.kind==='npc'&&!c.bus&&c!==P.car){c.flee=7;c.fx=P.x;c.fy=P.y;}
+            c.hp-=16;c.hitByP=true;c.blame='p';dead=true;c.hits=(c.hits|0)+1;if(c.hits>=6&&!(c.fire>0))igniteCar(c);if(c.kind==='npc'&&!c.bus&&c!==P.car){c.flee=7;c.fx=P.x;c.fy=P.y;}
             if(c.kind==='cop'||c.cop)crime(2);else if(c.kind==='npc')crime(1);
             for(let k=0;k<4;k++)parts.push({x:b.x,y:b.y,vx:rnd(-80,80),vy:rnd(-80,80),life:.3,max:.3,col:'#ffd27a',s:2});
             break;
@@ -552,8 +560,20 @@ function updPeds(dt){
     if(p.dead){peds.splice(i,1);continue;}
     if(inSea(p.x,p.y)){splash(p.x,p.y);peds.splice(i,1);continue;}
     if(dist(p.x,p.y,P.x,P.y)>1150){peds.splice(i,1);continue;}
+    if(p.gun){
+      p.gt+=dt;p.shotT-=dt;
+      if(p.gt>1.4&&p.gt<7.5&&P.dead<=0){
+        const d=dist(p.x,p.y,P.x,P.y);
+        if(d<460){
+          p.a=Math.atan2(P.y-p.y,P.x-p.x);p.flee=0;
+          if(p.shotT<=0){p.shotT=rnd(.7,1.1);const aa=p.a+rnd(-.14,.14);bullets.push({x:p.x+Math.cos(aa)*10,y:p.y+Math.sin(aa)*10,vx:Math.cos(aa)*560,vy:Math.sin(aa)*560,life:.9,o:'d'});parts.push({x:p.x+Math.cos(aa)*12,y:p.y+Math.sin(aa)*12,vx:0,vy:0,life:.07,max:.07,col:'#fff2a8',s:5});if(p.gt<2.6)msg('The driver pulls a gun!','#ff9f43',2);}
+          continue;
+        }
+      }else if(p.gt>=7.5&&p.flee<=0)p.flee=6;
+    }
     p.t-=dt;if(p.t<=0){p.t=rnd(1,4);p.a+=rnd(-1.3,1.3);}
     if(p.flee>0){p.flee-=dt;p.a=Math.atan2(p.y-P.y,p.x-P.x)+Math.sin(T*3+i)*.4;}
+    if(p.driver&&p.flee<=0&&!p.gun)p.flee=3;
     for(const c of cars){
       if(c.dead||Math.abs(c.v)<20)continue;
       if(Math.abs(c.x-p.x)>26||Math.abs(c.y-p.y)>26)continue;
@@ -1832,7 +1852,7 @@ function frame(ts){
 }
 document.getElementById('go').addEventListener('click',()=>{started=true;initAudio();document.getElementById('intro').style.display='none';});
 requestAnimationFrame(frame);
-window.__game={PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
+window.__game={bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
 })();
 </script>
 </body>
