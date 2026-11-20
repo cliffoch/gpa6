@@ -90,6 +90,12 @@ bFire.addEventListener('pointerdown',e=>{fireBtn=true;bFire.classList.add('on');
 const fireEnd=()=>{fireBtn=false;bFire.classList.remove('on');};
 bFire.addEventListener('pointerup',fireEnd);bFire.addEventListener('pointercancel',fireEnd);
 addEventListener('contextmenu',e=>e.preventDefault());
+// stop iOS double-tap / pinch page zoom (touch-action alone isn't always honoured)
+{let lastTE=0;
+ addEventListener('touchend',e=>{const n=Date.now();if(n-lastTE<350)e.preventDefault();lastTE=n;},{passive:false});
+ addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
+ addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault();},{passive:false});
+ ['gesturestart','gesturechange','gestureend','dblclick'].forEach(t=>addEventListener(t,e=>e.preventDefault()));}
 addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='KeyE'||e.code==='Enter')actPress();if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();});
 addEventListener('keyup',e=>{keys[e.code]=false;});
 
