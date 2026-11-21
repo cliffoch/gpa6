@@ -1385,8 +1385,17 @@ function drawHUD(){
     if(bp[0]>-100&&bp[0]<W+100&&bp[1]>-40&&bp[1]<H+40)drawBubble('VOGEL (WALLIS)',TR.say,bp[0],bp[1]-62,TR.sayT*2,'#c1121f');
   }
   // messages
-  ctx.font='700 17px '+F_UI;let yy=H*0.3;
-  for(const m of msgs){ctx.globalAlpha=clamp(m.t,0,1);ctx.fillStyle='rgba(0,0,0,.55)';const tw=ctx.measureText(m.text).width+24;ctx.fillRect(W/2-tw/2,yy-17,tw,26);ctx.fillStyle=m.col;ctx.fillText(m.text,W/2,yy+1);yy+=32;}
+  {const fs=Math.round(clamp(W/26,22,34)),lh=fs*1.18,maxW=Math.max(260,W-380);ctx.font='700 '+fs+'px '+F_UI;ctx.textAlign='center';let yy=10;
+   for(const m of msgs){
+     const words=m.text.split(' ');const lines=[];let cur='';
+     for(const w of words){const t=cur?cur+' '+w:w;if(ctx.measureText(t).width>maxW&&cur){lines.push(cur);cur=w;}else cur=t;}
+     if(cur)lines.push(cur);
+     let tw=0;for(const l of lines)tw=Math.max(tw,ctx.measureText(l).width);
+     const bh=lines.length*lh+12;
+     ctx.globalAlpha=clamp(m.t,0,1);ctx.fillStyle='rgba(0,0,0,.62)';rr(W/2-tw/2-16,yy,tw+32,bh,10);
+     ctx.fillStyle=m.col;lines.forEach((l,k)=>ctx.fillText(l,W/2,yy+6+fs*0.88+k*lh));
+     yy+=bh+6;}
+  }
   ctx.globalAlpha=1;
   // busted bar
   if(bustT>0){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(W/2-60,H*0.22,120,10);ctx.fillStyle='#4a86ff';ctx.fillRect(W/2-60,H*0.22,120*clamp(bustT/2,0,1),10);ctx.font='700 11px '+F_UI;ctx.fillStyle='#fff';ctx.fillText('BEING ARRESTED',W/2,H*0.22-5);}
