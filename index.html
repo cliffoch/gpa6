@@ -1034,6 +1034,20 @@ function updGrens(dt){
     if(g.fuse<=0){grenBoom(g);GRENS.splice(i,1);}
   }
 }
+const KNIVES=[];
+function throwKnife(m,tx,ty){const a=Math.atan2(ty-m.y,tx-m.x)+rnd(-.1,.1);KNIVES.push({x:m.x+Math.cos(a)*8,y:m.y+Math.sin(a)*8,vx:Math.cos(a)*400,vy:Math.sin(a)*400,spin:rnd(0,PI2),life:.75});}
+function updKnives(dt){
+  for(let i=KNIVES.length-1;i>=0;i--){
+    const k=KNIVES[i];k.x+=k.vx*dt;k.y+=k.vy*dt;k.spin+=dt*22;k.life-=dt;
+    let dead=k.life<=0||isSolid(k.x,k.y);
+    if(!dead){
+      if(P.car){if(dist(P.car.x,P.car.y,k.x,k.y)<20){P.car.hp-=6;hurt(1.5);dead=true;}}
+      else if(P.dead<=0&&dist(P.x,P.y,k.x,k.y)<11){hurt(9);dead=true;}
+      if(!dead)for(const c of cars){if(c.kind==='cop'&&!c.dead&&Math.abs(c.x-k.x)<22&&Math.abs(c.y-k.y)<22){c.hp-=5;dead=true;break;}}
+    }
+    if(dead){for(let q=0;q<3;q++)parts.push({x:k.x,y:k.y,vx:rnd(-50,50),vy:rnd(-50,50),life:.25,max:.25,col:'#dfe6ee',s:2});KNIVES.splice(i,1);}
+  }
+}
 function killGangster(m){
   m.dead=true;m.respT=70;
   for(let i=0;i<8;i++)parts.push({x:m.x,y:m.y,vx:rnd(-80,80),vy:rnd(-80,80),life:.5,max:.5,col:'#b3122b',s:2.5});
@@ -1071,6 +1085,7 @@ function updGangs(dt){
           bullets.push({x:m.x+Math.cos(a)*10,y:m.y+Math.sin(a)*10,vx:Math.cos(a)*440,vy:Math.sin(a)*440,life:.9,o:'g'});
           m.cool=rnd(1.2,2.2);
         }
+        if(g.name==='The Service Desk Mafia'){m.kcool=(m.kcool===undefined?rnd(.8,2.5):m.kcool)-dt;if(m.kcool<=0&&d>40&&d<260){throwKnife(m,tgt.x+(useCop?Math.cos(ct.a)*ct.v*0.25:P.car?Math.cos(P.car.a)*P.car.v*0.25:0),tgt.y+(useCop?Math.sin(ct.a)*ct.v*0.25:P.car?Math.sin(P.car.a)*P.car.v*0.25:0));m.kcool=rnd(1.4,2.6);}}
         if(g.name==='TS Devs'){m.gcool=(m.gcool===undefined?rnd(1,3):m.gcool)-dt;if(m.gcool<=0&&d>90&&d<300){throwGrenade(m,tgt.x+(useCop?Math.cos(ct.a)*ct.v*0.6:P.car?Math.cos(P.car.a)*P.car.v*0.6:0),tgt.y+(useCop?Math.sin(ct.a)*ct.v*0.6:P.car?Math.sin(P.car.a)*P.car.v*0.6:0));m.gcool=rnd(3.5,6);}}
       }else{
         if(m.t<=0){m.t=rnd(1,3);m.a=dist(m.x,m.y,m.hx,m.hy)>45?Math.atan2(m.hy-m.y,m.hx-m.x):m.a+rnd(-1.6,1.6);}
@@ -1084,7 +1099,7 @@ function update(dt){
   if(shopOpen)return;
   updRadio(dt);
   T+=dt;dayT+=dt;
-  updPlayer(dt);updateCars(dt);updPeds(dt);updBill(dt);updRob(dt);updNomad(dt);updGangs(dt);updGrens(dt);updTrain(dt);updBullets(dt);updParts(dt);
+  updPlayer(dt);updateCars(dt);updPeds(dt);updBill(dt);updRob(dt);updNomad(dt);updGangs(dt);updGrens(dt);updKnives(dt);updTrain(dt);updBullets(dt);updParts(dt);
   updTunnels(dt);updateWanted(dt);updMission(dt);ensurePopulation(dt);
   for(const m of msgs)m.t-=dt;
   while(msgs.length&&msgs[0].t<=0)msgs.shift();
@@ -1225,6 +1240,7 @@ function draw2D(){
   const nc=nearCar();
   if(nc&&P.dead<=0){ctx.strokeStyle='#4aa8ff';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(nc.x,nc.y,Math.max(nc.w,nc.h)*0.7,0,PI2);ctx.stroke();ctx.setLineDash([]);}
   // bullets
+  for(const k of KNIVES){ctx.save();ctx.translate(k.x,k.y);ctx.rotate(k.spin);ctx.fillStyle='#e8eef5';ctx.fillRect(-6,-1,10,2);ctx.fillStyle='#5a3a1a';ctx.fillRect(-9,-1.5,4,3);ctx.restore();}
   for(const g of GRENS){ctx.fillStyle='#222';ctx.beginPath();ctx.arc(g.x,g.y,4,0,PI2);ctx.fill();ctx.fillStyle=Math.floor(g.age*8)%2?'#ff3b3b':'#7bff7b';ctx.beginPath();ctx.arc(g.x,g.y-1,1.6,0,PI2);ctx.fill();}
   for(const b of bullets){ctx.strokeStyle=b.o==='p'?'#fff6a8':'#ff7a7a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*0.025,b.y-b.vy*0.025);ctx.stroke();}
   // buildings with parallax
@@ -1415,7 +1431,7 @@ function drawHUD(){
 
 // ---------- 3D renderer (three.js) ----------
 let lampBulbMat=null,lampPoolMat=null,lampPools=null,seaTex=null,gangMeshes=[],gangRings=[],robG,billG,billArm,gl3=false,renderer,scene,camera3,hemi,sunL,partGeo,partPts,nearRing,markerG,markerA,markerB,markerRing,playerG,beamMat,SKYD,SKYN,frameId=0;
-const flamePool=[],expPool=[],grenPool=[],carMeshes=new Map(),pedMeshes=new Map(),pickMeshes=new Map(),bulletPool=[],sideMats=[];
+const knifePool=[],flamePool=[],expPool=[],grenPool=[],carMeshes=new Map(),pedMeshes=new Map(),pickMeshes=new Map(),bulletPool=[],sideMats=[];
 const MAXP=1400,partPos=new Float32Array(MAXP*3),partCol=new Float32Array(MAXP*3);
 const colCache={};
 function rgbOf(col){
@@ -1763,6 +1779,7 @@ function init3D(){
     {const ft=ctex(64,64,(g,w,hh)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.35,'rgba(255,255,255,.55)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,w,hh);});
      for(let i=0;i<150;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,color:0xff8a1f,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));sp.visible=false;scene.add(sp);flamePool.push(sp);}}
     for(let i=0;i<56;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:flamePool[0].material.map,color:0xff8a1f,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));sp.visible=false;scene.add(sp);expPool.push(sp);}
+    for(let i=0;i<14;i++){const m=new THREE.Mesh(bg(11,0.8,2.6),new THREE.MeshBasicMaterial({color:0xeaf0f8}));m.visible=false;scene.add(m);knifePool.push(m);}
     for(let i=0;i<8;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(3.2,8,6),new THREE.MeshBasicMaterial({color:0x2a3a2a}));m.visible=false;scene.add(m);grenPool.push(m);}
     // particles
     partGeo=new THREE.BufferGeometry();
@@ -1840,6 +1857,7 @@ function render3D(){
     if(!b){m.visible=false;continue;}
     m.visible=true;m.position.set(b.x,7,b.y);m.rotation.y=-Math.atan2(b.vy,b.vx);m.material.color.setHex(b.o==='p'?0xfff6a8:0xff6a6a);
   }
+  for(let i=0;i<knifePool.length;i++){const m=knifePool[i],k=KNIVES[i];if(!k){m.visible=false;continue;}m.visible=true;m.position.set(k.x,6,k.y);m.rotation.y=-k.spin;}
   for(let i=0;i<grenPool.length;i++){
     const m=grenPool[i],g=GRENS[i];
     if(!g){m.visible=false;continue;}
@@ -1932,7 +1950,7 @@ function frame(ts){
 }
 document.getElementById('go').addEventListener('click',()=>{started=true;initAudio();document.getElementById('intro').style.display='none';});
 requestAnimationFrame(frame);
-window.__game={TUNNELS,enterTunnel,bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
+window.__game={KNIVES,TUNNELS,enterTunnel,bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
 })();
 </script>
 </body>
