@@ -1008,16 +1008,16 @@ function updNomad(dt){
 }
 
 // ---------- street gangs (random spots, they shoot on sight) ----------
-const GANG_NAMES=['The Service Desk Mafia','Onboarding Team','TS Devs','KT Neo Next Maniacs'],GANG_COLS=['#8e44ad','#c0392b','#16a085','#d4ac0d'];
+const GANG_NAMES=['The Service Desk Mafia','Onboarding Team','TS Devs','KT Neo Next Maniacs','CAB Approvers'],GANG_COLS=['#8e44ad','#c0392b','#16a085','#d4ac0d','#e67e22'];
 const GANGS=(()=>{
   const out=[];let tries=0;
-  while(out.length<8&&tries<1500){
+  while(out.length<10&&tries<2500){
     tries++;
     const ix=rint(1,N-1),iy=rint(1,N-1),x=ix*CELL,y=iy*CELL;
     if(Math.abs(y-RAILY)<200)continue;
     if(dist(x,y,S.x,S.y)<(out.length<2?450:650)||(out.length<2&&tries<1000&&dist(x,y,S.x,S.y)>1100)||dist(x,y,HQ.cx,HQ.cz)<350||dist(x,y,DEV.cx,DEV.cz)<350)continue;
     if(out.some(g=>dist(g.x,g.y,x,y)<(tries>900?300:450)))continue;
-    const k=out.length,g={x,y,name:GANG_NAMES[k%4],col:GANG_COLS[k%4],members:[],alert:0,msgCool:0};
+    const k=out.length,g={x,y,name:GANG_NAMES[k%5],col:GANG_COLS[k%5],members:[],alert:0,msgCool:0};
     [[-30,-25],[28,-30],[-26,30]].forEach(o=>g.members.push({x:x+o[0],y:y+o[1],hx:x+o[0],hy:y+o[1],a:rnd(0,PI2),hp:40,cool:rnd(.5,1.5),t:0,walk:0,dead:false,respT:0,gang:g}));
     if(g.name==='TS Devs')for(let q=0;q<7;q++){const ox=rnd(-44,44),oy=rnd(-44,44);g.members.push({x:x+ox,y:y+oy,hx:x+ox,hy:y+oy,a:rnd(0,PI2),hp:40,cool:rnd(.5,1.8),t:0,walk:0,dead:false,respT:0,gang:g});}
     out.push(g);
@@ -1045,6 +1045,28 @@ function updGrens(dt){
     if(isSolid(g.x,ny))g.vy*=-0.4;else g.y=ny;
     const dmp=g.age>1.0?Math.pow(.02,dt):1;g.vx*=dmp;g.vy*=dmp;
     if(g.fuse<=0){grenBoom(g);GRENS.splice(i,1);}
+  }
+}
+const ROCKETS=[];
+function fireRocket(m,tx,ty){const a=Math.atan2(ty-m.y,tx-m.x)+rnd(-.06,.06);ROCKETS.push({x:m.x+Math.cos(a)*12,y:m.y+Math.sin(a)*12,vx:Math.cos(a)*330,vy:Math.sin(a)*330,a,life:1.6,age:0});parts.push({x:m.x,y:m.y,vx:0,vy:0,life:.15,max:.15,col:'#ffe9a0',s:7});}
+function rocketBoom(x,y){
+  grenBoom({x,y});EXPL.push({x,y,t:0,sd:Math.random()*9});if(EXPL.length>8)EXPL.shift();
+  for(let i=0;i<30;i++){const a=rnd(0,PI2),sp=rnd(60,340);parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rnd(.5,1.2),max:1.2,col:hexHue(rnd(0,360)),s:rnd(3,6)});}
+  for(const o of cars){if(o.dead)continue;const d=dist(o.x,o.y,x,y);if(d<85){o.hp-=40;o.hitByG=true;if(d<55&&o.kind!=='park'||d<40)igniteCar(o);}}
+  shake=Math.max(shake,12);
+}
+function updRockets(dt){
+  for(let i=ROCKETS.length-1;i>=0;i--){
+    const r=ROCKETS[i];r.x+=r.vx*dt;r.y+=r.vy*dt;r.age+=dt;r.life-=dt;
+    parts.push({x:r.x-Math.cos(r.a)*8,y:r.y-Math.sin(r.a)*8,vx:rnd(-12,12),vy:rnd(-12,12),life:.5,max:.5,col:Math.random()<.5?'rgba(210,210,210,.6)':'#ffb347',s:rnd(3,5)});
+    let boom=r.life<=0||isSolid(r.x,r.y);
+    if(!boom){
+      if(P.car){if(dist(P.car.x,P.car.y,r.x,r.y)<22)boom=true;}
+      else if(P.dead<=0&&dist(P.x,P.y,r.x,r.y)<12)boom=true;
+      if(!boom)for(const c of cars){if(!c.dead&&c!==P.car&&Math.abs(c.x-r.x)<22&&Math.abs(c.y-r.y)<22){boom=true;break;}}
+      if(!boom)for(const p of peds){if(!p.dead&&dist(p.x,p.y,r.x,r.y)<10){boom=true;break;}}
+    }
+    if(boom){rocketBoom(r.x,r.y);ROCKETS.splice(i,1);}
   }
 }
 const KNIVES=[];
@@ -1098,6 +1120,7 @@ function updGangs(dt){
           bullets.push({x:m.x+Math.cos(a)*10,y:m.y+Math.sin(a)*10,vx:Math.cos(a)*440,vy:Math.sin(a)*440,life:.9,o:'g'});
           m.cool=rnd(1.2,2.2);
         }
+        if(g.name==='CAB Approvers'){m.rcool=(m.rcool===undefined?rnd(1.5,4):m.rcool)-dt;if(m.rcool<=0&&d>110&&d<400){fireRocket(m,tgt.x+(useCop?Math.cos(ct.a)*ct.v*0.5:P.car?Math.cos(P.car.a)*P.car.v*0.5:0),tgt.y+(useCop?Math.sin(ct.a)*ct.v*0.5:P.car?Math.sin(P.car.a)*P.car.v*0.5:0));m.rcool=rnd(3.2,5);}}
         if(g.name==='The Service Desk Mafia'){m.kcool=(m.kcool===undefined?rnd(.8,2.5):m.kcool)-dt;if(m.kcool<=0&&d>40&&d<260){throwKnife(m,tgt.x+(useCop?Math.cos(ct.a)*ct.v*0.25:P.car?Math.cos(P.car.a)*P.car.v*0.25:0),tgt.y+(useCop?Math.sin(ct.a)*ct.v*0.25:P.car?Math.sin(P.car.a)*P.car.v*0.25:0));m.kcool=rnd(1.4,2.6);}}
         if(g.name==='TS Devs'){m.gcool=(m.gcool===undefined?rnd(1,3):m.gcool)-dt;if(m.gcool<=0&&d>90&&d<300){throwGrenade(m,tgt.x+(useCop?Math.cos(ct.a)*ct.v*0.6:P.car?Math.cos(P.car.a)*P.car.v*0.6:0),tgt.y+(useCop?Math.sin(ct.a)*ct.v*0.6:P.car?Math.sin(P.car.a)*P.car.v*0.6:0));m.gcool=rnd(3.5,6);}}
       }else{
@@ -1112,7 +1135,7 @@ function update(dt){
   if(shopOpen)return;
   updRadio(dt);
   T+=dt;dayT+=dt;
-  updPlayer(dt);updateCars(dt);updPeds(dt);updBill(dt);updRob(dt);updNomad(dt);updGangs(dt);updGrens(dt);updKnives(dt);updTrain(dt);updBullets(dt);updParts(dt);
+  updPlayer(dt);updateCars(dt);updPeds(dt);updBill(dt);updRob(dt);updNomad(dt);updGangs(dt);updGrens(dt);updKnives(dt);updRockets(dt);updTrain(dt);updBullets(dt);updParts(dt);
   updTunnels(dt);updateWanted(dt);updMission(dt);ensurePopulation(dt);
   for(const m of msgs)m.t-=dt;
   while(msgs.length&&msgs[0].t<=0)msgs.shift();
@@ -1253,6 +1276,7 @@ function draw2D(){
   const nc=nearCar();
   if(nc&&P.dead<=0){ctx.strokeStyle='#4aa8ff';ctx.lineWidth=2;ctx.setLineDash([5,4]);ctx.beginPath();ctx.arc(nc.x,nc.y,Math.max(nc.w,nc.h)*0.7,0,PI2);ctx.stroke();ctx.setLineDash([]);}
   // bullets
+  for(const r of ROCKETS){ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.a);ctx.fillStyle='#d8d8d8';ctx.fillRect(-8,-2,16,4);ctx.fillStyle='#ff5a1a';ctx.fillRect(8,-2,4,4);ctx.fillStyle='#ffd24a';ctx.fillRect(-12,-1.5,4,3);ctx.restore();}
   for(const k of KNIVES){ctx.save();ctx.translate(k.x,k.y);ctx.rotate(k.spin);ctx.fillStyle='#e8eef5';ctx.fillRect(-6,-1,10,2);ctx.fillStyle='#5a3a1a';ctx.fillRect(-9,-1.5,4,3);ctx.restore();}
   for(const g of GRENS){ctx.fillStyle='#222';ctx.beginPath();ctx.arc(g.x,g.y,4,0,PI2);ctx.fill();ctx.fillStyle=Math.floor(g.age*8)%2?'#ff3b3b':'#7bff7b';ctx.beginPath();ctx.arc(g.x,g.y-1,1.6,0,PI2);ctx.fill();}
   for(const b of bullets){ctx.strokeStyle=b.o==='p'?'#fff6a8':'#ff7a7a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*0.025,b.y-b.vy*0.025);ctx.stroke();}
@@ -1444,7 +1468,7 @@ function drawHUD(){
 
 // ---------- 3D renderer (three.js) ----------
 let lampBulbMat=null,lampPoolMat=null,lampPools=null,seaTex=null,gangMeshes=[],gangRings=[],robG,billG,billArm,gl3=false,renderer,scene,camera3,hemi,sunL,partGeo,partPts,nearRing,markerG,markerA,markerB,markerRing,playerG,beamMat,SKYD,SKYN,frameId=0;
-const knifePool=[],flamePool=[],expPool=[],grenPool=[],carMeshes=new Map(),pedMeshes=new Map(),pickMeshes=new Map(),bulletPool=[],sideMats=[];
+const rocketPool=[],knifePool=[],flamePool=[],expPool=[],grenPool=[],carMeshes=new Map(),pedMeshes=new Map(),pickMeshes=new Map(),bulletPool=[],sideMats=[];
 const MAXP=1400,partPos=new Float32Array(MAXP*3),partCol=new Float32Array(MAXP*3);
 const colCache={};
 function rgbOf(col){
@@ -1792,6 +1816,7 @@ function init3D(){
     {const ft=ctex(64,64,(g,w,hh)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(.35,'rgba(255,255,255,.55)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(0,0,w,hh);});
      for(let i=0;i<150;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:ft,color:0xff8a1f,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));sp.visible=false;scene.add(sp);flamePool.push(sp);}}
     for(let i=0;i<56;i++){const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:flamePool[0].material.map,color:0xff8a1f,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));sp.visible=false;scene.add(sp);expPool.push(sp);}
+    for(let i=0;i<8;i++){const g2=new THREE.Group();const b=new THREE.Mesh(bg(18,4,4),new THREE.MeshBasicMaterial({color:0xdadada}));const t=new THREE.Mesh(bg(5,4.4,4.4),new THREE.MeshBasicMaterial({color:0xff5a1a}));t.position.x=10;g2.add(b);g2.add(t);g2.visible=false;scene.add(g2);rocketPool.push(g2);}
     for(let i=0;i<14;i++){const m=new THREE.Mesh(bg(11,0.8,2.6),new THREE.MeshBasicMaterial({color:0xeaf0f8}));m.visible=false;scene.add(m);knifePool.push(m);}
     for(let i=0;i<8;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(3.2,8,6),new THREE.MeshBasicMaterial({color:0x2a3a2a}));m.visible=false;scene.add(m);grenPool.push(m);}
     // particles
@@ -1870,6 +1895,7 @@ function render3D(){
     if(!b){m.visible=false;continue;}
     m.visible=true;m.position.set(b.x,7,b.y);m.rotation.y=-Math.atan2(b.vy,b.vx);m.material.color.setHex(b.o==='p'?0xfff6a8:0xff6a6a);
   }
+  for(let i=0;i<rocketPool.length;i++){const m=rocketPool[i],r=ROCKETS[i];if(!r){m.visible=false;continue;}m.visible=true;m.position.set(r.x,8,r.y);m.rotation.y=-r.a;}
   for(let i=0;i<knifePool.length;i++){const m=knifePool[i],k=KNIVES[i];if(!k){m.visible=false;continue;}m.visible=true;m.position.set(k.x,6,k.y);m.rotation.y=-k.spin;}
   for(let i=0;i<grenPool.length;i++){
     const m=grenPool[i],g=GRENS[i];
@@ -1963,7 +1989,7 @@ function frame(ts){
 }
 document.getElementById('go').addEventListener('click',()=>{started=true;initAudio();document.getElementById('intro').style.display='none';});
 requestAnimationFrame(frame);
-window.__game={KNIVES,TUNNELS,enterTunnel,bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
+window.__game={ROCKETS,KNIVES,TUNNELS,enterTunnel,bailDriver,PAINTS,respray,paintNear,closeShop,SHOPS,WEAPONS,buyItem,tryShop,cycleRadio,igniteCar,get shopOpen(){return shopOpen;},get radioSt(){return radioSt;},get bullets(){return bullets;},VENG,GRENS,OIL,GANGS,DEV,NOMAD,tryHandIn,HQ,ROB,TR,BILL,update,draw,P,get cars(){return cars;},get peds(){return peds;},get wanted(){return wanted;},set wanted(v){wanted=v;},crime,start(){started=true;},actPress,keys};
 })();
 </script>
 </body>
