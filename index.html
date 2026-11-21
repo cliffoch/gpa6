@@ -235,7 +235,10 @@ function chooseDir(c,ix,iy,chase){
 function driveLane(c,dt,cruise,chase){
   let target=Math.min(cruise,c.t.max*(chase?1:0.8));
   const fx=c.x+DX[c.dir]*(c.w/2+26),fy=c.y+DY[c.dir]*(c.w/2+26);
-  for(const o of cars){if(o===c||o.dead)continue;if(Math.abs(o.x-fx)<30&&Math.abs(o.y-fy)<30){target=0;break;}}
+  let blocked=false;
+  if(c.ghost>0)c.ghost-=dt;
+  else for(const o of cars){if(o===c||o.dead||o.under>0)continue;if(Math.abs(o.x-fx)<30&&Math.abs(o.y-fy)<30){target=0;blocked=true;break;}}
+  if(blocked&&c.v<8){c.blk=(c.blk||0)+dt;if(c.blk>3){c.ghost=2.5;c.blk=0;}}else c.blk=0;
   if(!P.car&&P.dead<=0){
     const ca=Math.cos(c.a),sa=Math.sin(c.a),rx=P.x-c.x,ry=P.y-c.y;
     const ahead=rx*ca+ry*sa,side=Math.abs(-rx*sa+ry*ca);
@@ -332,6 +335,7 @@ function carCollide(){
     for(let j=i+1;j<cars.length;j++){
       const b=cars[j];if(b.dead)continue;
       if(a.kind==='npc'&&b.kind==='npc')continue;
+      if((a.ghost>0||b.ghost>0)&&a!==P.car&&b!==P.car)continue;
       const dx=b.x-a.x,dy=b.y-a.y;
       if(Math.abs(dx)>34||Math.abs(dy)>34)continue;
       const d=Math.hypot(dx,dy);if(d>=32||d<0.01)continue;
