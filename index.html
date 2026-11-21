@@ -1019,6 +1019,7 @@ const GANGS=(()=>{
     if(out.some(g=>dist(g.x,g.y,x,y)<(tries>900?300:450)))continue;
     const k=out.length,g={x,y,name:GANG_NAMES[k%5],col:GANG_COLS[k%5],members:[],alert:0,msgCool:0};
     [[-30,-25],[28,-30],[-26,30]].forEach(o=>g.members.push({x:x+o[0],y:y+o[1],hx:x+o[0],hy:y+o[1],a:rnd(0,PI2),hp:40,cool:rnd(.5,1.5),t:0,walk:0,dead:false,respT:0,gang:g}));
+    if(g.name!=='The Service Desk Mafia'&&g.name!=='TS Devs')for(let q=0;q<2;q++){const ox=rnd(-44,44),oy=rnd(-44,44);g.members.push({x:x+ox,y:y+oy,hx:x+ox,hy:y+oy,a:rnd(0,PI2),hp:40,cool:rnd(.5,1.8),t:0,walk:0,dead:false,respT:0,gang:g});}
     if(g.name==='TS Devs')for(let q=0;q<7;q++){const ox=rnd(-44,44),oy=rnd(-44,44);g.members.push({x:x+ox,y:y+oy,hx:x+ox,hy:y+oy,a:rnd(0,PI2),hp:40,cool:rnd(.5,1.8),t:0,walk:0,dead:false,respT:0,gang:g});}
     out.push(g);
   }
